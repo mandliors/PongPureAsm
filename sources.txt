@@ -1,0 +1,3 @@
+Setup (literally the only good resource I've found): https://bitcodersblog.wordpress.com/2017/05/10/win32-in-nasm-part-1/
+Win32 API: https://learn.microsoft.com/en-us/windows/win32/learnwin32/your-first-windows-program
+Best linker ever: https://github.com/qb40/alink
