@@ -13,6 +13,8 @@ SW_SHOW				equ 5
 WM_CREATE			equ 0x0001
 WM_DESTROY			equ 0x0002
 WM_PAINT			equ 0x000F
+WM_KEYDOWN			equ 0x0100
+WM_KEYUP			equ 0x0101
 WM_CLOSE			equ 0x0010
 
 
@@ -23,6 +25,11 @@ section .rodata use32
 	
 	sigma 					db "the negus ruled Ethiopia until the coup of 1974", 0
 	sigma_length 			equ $-sigma
+
+	wKeyDown				db 0
+	sKeyDown				db 0
+	upArrowDown				db 0
+	downArrowDown			db 0
 	
 ; uninitialized static variables
 section .bss use32
@@ -45,12 +52,12 @@ section .text use32
     dll_import    user32.dll,	PostQuitMessage
     dll_import    user32.dll,	DestroyWindow
 
-    dll_import    kernel32.dll, GetLastError
-
     dll_import    user32.dll,	BeginPaint
     dll_import    user32.dll,	EndPaint
     dll_import    user32.dll,	GetClientRect
     dll_import    user32.dll,	FillRect
+	
+    dll_import    user32.dll,	GetKeyState
     
 	dll_import    gdi32.dll,	CreateSolidBrush
 	dll_import    gdi32.dll,	DeleteObject
@@ -104,7 +111,7 @@ mainMessageLoop:
 	
 	push	messageBuffer
 	call	[DispatchMessageA]
-	
+
 	jmp		mainMessageLoop
 
 	
@@ -125,6 +132,10 @@ windowProcedure:
 	je		_onDestroy
 	cmp		dword [ebp_message], WM_PAINT
 	je		_onPaint
+	cmp		dword [ebp_message], WM_KEYDOWN
+	je		_onKeyDown
+	cmp		dword [ebp_message], WM_KEYUP
+	je		_onKeyUp
 	cmp		dword [ebp_message], WM_CLOSE
 	je		_onClose
 	
@@ -217,6 +228,48 @@ _onPaint:
 	pop		esi
 	pop 	ebx
 
+	mov		esp, ebp
+	pop		ebp
+	ret		16
+
+_onKeyDown:
+	cmp		dword [ebp_wparam], 0x57	; W key
+	jne		_notWKeyDown
+	mov		byte [wKeyDown], 1
+_notWKeyDown:
+	cmp		dword [ebp_wparam], 0x53	; S key
+	jne		_notSKeyDown
+	mov		byte [sKeyDown], 1
+_notSKeyDown:
+	cmp		dword [ebp_wparam], 0x26	; Up Arrow
+	jne		_notUpArrowDown
+	mov		byte [upArrowDown], 1
+_notUpArrowDown:
+	cmp		dword [ebp_wparam], 0x28	; Down Arrow
+	jne		_notDownArrowDown
+	mov		byte [downArrowDown], 1
+_notDownArrowDown:
+	mov		esp, ebp
+	pop		ebp
+	ret		16
+
+_onKeyUp:
+	cmp		dword [ebp_wparam], 0x57	; W key
+	jne		_notWKeyUp
+	mov		byte [wKeyDown], 0
+_notWKeyUp:
+	cmp		dword [ebp_wparam], 0x53	; S key
+	jne		_notSKeyUp
+	mov		byte [sKeyDown], 0
+_notSKeyUp:
+	cmp		dword [ebp_wparam], 0x26	; Up Arrow
+	jne		_notUpArrowUp
+	mov		byte [upArrowDown], 0
+_notUpArrowUp:
+	cmp		dword [ebp_wparam], 0x28	; Down Arrow
+	jne		_notDownArrowUp
+	mov		byte [downArrowDown], 0
+_notDownArrowUp:
 	mov		esp, ebp
 	pop		ebp
 	ret		16
