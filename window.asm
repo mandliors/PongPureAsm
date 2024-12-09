@@ -21,7 +21,7 @@ WS_SYSMENU			equ 0x00080000
 WS_MINIMIZEBOX      equ 0x00020000
 WS_MAXIMIZEBOX      equ 0x00010000
 WS_SIZEBOX          equ 0x00040000
-WS_DEFAULT          equ WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX
+WS_DEFAULT          equ WS_SYSMENU | WS_MINIMIZEBOX
 
 STD_OUTPUT_HANDLE	equ -11
 
@@ -53,6 +53,8 @@ section .text use32
     dll_import    kernel32.dll, GetCommandLineA
 	dll_import    kernel32.dll, GetStdHandle
 	dll_import    kernel32.dll, WriteFile
+
+	dll_import	  kernel32.dll, CreateFileA	
 
     global        init
     global        register_window_class
@@ -153,11 +155,10 @@ create_window:
 	push	dword [ebp+24]      ; LPCTSTR lpClassName
 	push	0					; DWORD dwExStyle
 	call	[CreateWindowExA]
-	mov		dword [ebp+8], eax
+	mov		ecx, dword [ebp+8]
+	mov		dword [ecx], eax	; save handle to hWnd
 	cmp		eax, 0
 	je		createWindowError
-
-    mov     dword [ebp+8], eax  ; save handle to hWnd
 
     mov     esp, ebp
     pop     ebp
@@ -182,7 +183,6 @@ print_to_stdout:
 	mov		esp, ebp
 	pop		ebp
 	ret
-
 
 ; error handler for RegisterClassEx
 registerClassError:
