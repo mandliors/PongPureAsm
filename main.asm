@@ -28,8 +28,14 @@ section .data use32
 	upArrowDown				dd 0
 	downArrowDown			dd 0
 
-	racket1Pos				dd 300
-	racket2Pos				dd 300
+	racket1Pos				resb 4
+	racket2Pos				resb 4
+
+	ballPosX				resb 4
+	ballPosY				resb 4
+	ballVelX				resb 4
+	ballVelY				resb 4
+
 
 ; read-only data
 section .rodata use32
@@ -42,7 +48,9 @@ section .rodata use32
 	racketWidth				dd 10
 	racketHeight			dd 100
 	racketOffset			dd 30
-	racketSpeed				dd 3
+	racketSpeed				dd 4
+
+	ballSize				dd 18
 
 	sigma 					db "the negus ruled Ethiopia until the coup of 1974", 0
 	sigma_length 			equ $-sigma
@@ -117,6 +125,8 @@ section .text use32
 	call	print_to_stdout
 	add		esp, 8
 
+	call	gameInit
+
 ; main loop
 mainMessageLoop:
 	; pop a message
@@ -152,6 +162,30 @@ _messageLoopEnd:
 	jmp		mainMessageLoop
 	
 	
+gameInit:
+	push	ebp
+	mov		ebp, esp
+
+	; half width and height
+	mov		ecx, dword [windowWidth]
+	shr		ecx, 1
+	mov		edx, dword [windowHeight]
+	shr		edx, 1
+	
+	; rackets
+	mov		dword [racket1Pos], edx
+	mov		dword [racket2Pos], edx
+
+	; ball
+	mov		dword [ballPosX], ecx
+	mov		dword [ballPosY], edx
+	mov		dword [ballVelX], 1
+	mov		dword [ballVelY], 6
+
+	mov		esp, ebp
+	pop 	ebp
+	ret
+
 gameLoop:
 	push	ebp
 	mov		ebp, esp
@@ -159,34 +193,108 @@ gameLoop:
 	push 	ebx
 	push	esi
 
-_update:
+	mov		ecx, 0 				; player1 movement
+	mov		edx, 0 				; player2 movement
+
+; update
+; check racket movement directions
+	; racket 1
 	cmp		dword [wKeyDown], 1
 	jne		_update_NotW
-	mov		eax, dword [racket1Pos]
-	sub		eax, dword [racketSpeed]
-	mov 	dword [racket1Pos], eax
+	add		ecx, -1
 _update_NotW:
 	cmp		dword [sKeyDown], 1
 	jne		_update_NotS
-	mov		eax, dword [racket1Pos]
-	add		eax, dword [racketSpeed]
-	mov 	dword [racket1Pos], eax
+	add		ecx, 1
 _update_NotS:
+	; racket 2
 	cmp		dword [upArrowDown], 1
 	jne		_update_NotUp
-	mov		eax, dword [racket2Pos]
-	sub		eax, dword [racketSpeed]
-	mov 	dword [racket2Pos], eax
+	add		edx, -1
 _update_NotUp:
 	cmp		dword [downArrowDown], 1
 	jne		_update_NotDown
-	mov		eax, dword [racket2Pos]
-	add		eax, dword [racketSpeed]
-	mov 	dword [racket2Pos], eax
+	add		edx, 1
 _update_NotDown:
-	; update ball
 
-_render:
+; update racket positions
+	imul	ecx, dword [racketSpeed]
+	imul	edx, dword [racketSpeed]
+
+	; racket 1
+	mov		eax, dword [racket1Pos]
+	add		eax, ecx	
+	mov		dword [racket1Pos], eax
+
+	mov		ecx, dword [racketHeight]
+	shr		ecx, 1
+	cmp		dword [racket1Pos], ecx
+	jge		_update_racket1TopGood
+	mov		dword [racket1Pos], ecx
+
+_update_racket1TopGood:
+	mov		ecx, dword [racketHeight]
+	shr		ecx, 1
+	imul	ecx, -1
+	add		ecx, dword [windowHeight]
+	cmp		dword [racket1Pos], ecx
+	jle 	_update_racket1BottomGood
+	mov		dword [racket1Pos], ecx
+
+_update_racket1BottomGood:
+
+	; racket 2
+	mov		eax, dword [racket2Pos]
+	add		eax, edx	
+	mov		dword [racket2Pos], eax
+
+	mov		ecx, dword [racketHeight]
+	cmp		dword [racket2Pos], ecx
+	jge		_update_racket2TopGood
+	mov		dword [racket2Pos], ecx
+
+_update_racket2TopGood:
+	mov		ecx, dword [racketHeight]
+	shr		ecx, 1
+	imul	ecx, -1
+	add		ecx, dword [windowHeight]
+	cmp		dword [racket2Pos], ecx
+	jle 	_update_racket2BottomGood
+	mov		dword [racket2Pos], ecx
+
+_update_racket2BottomGood:
+
+	; update ball
+	mov		eax, dword [ballSize]
+	shr		eax, 1
+
+	mov		ecx, dword [ballPosX]
+	add		ecx, dword [ballVelX]
+	mov		dword [ballPosX], ecx
+	
+	mov		edx, dword [ballPosY]
+	add		edx, dword [ballVelY]
+	mov		dword [ballPosY], edx
+	
+	sub		ecx, eax
+	sub		edx, eax
+	mov		eax, dword [ballSize]
+
+	cmp 	edx, 0
+	jle		_update_flipBallYVel
+
+	add		edx, eax
+	cmp		edx, dword [windowHeight]
+	jl		_update_noFlipBallYVel
+
+_update_flipBallYVel:
+	mov		eax, dword [ballVelY]
+	imul	eax, -1
+	mov		dword [ballVelY], eax
+	
+_update_noFlipBallYVel:
+
+; render
 	; hdc = GetDC(hwnd)
 	push	dword [windowHandle]
 	call	[GetDC]
@@ -206,24 +314,26 @@ _render:
 	call	[FillRect]
 
 	; racket offset
-	mov		eax, dword [racketHeight]
-	mov		edx, 2
-	div 	dl							; ax := al / dl
-	movzx	esi, ax						; offset in esi
+	mov		esi, dword [racketHeight]
+	shr		esi, 1						; divide by 2
+	; mov		eax, dword [racketHeight]
+	; mov		edx, 2
+	; div 	dl							; ax := al / dl
+	; movzx	esi, ax						; offset in esi
 
 	; player 1
 	mov		ecx, dword [racket1Pos]
 	
 	mov		eax, dword [racketOffset]
-	mov		dword [esp +0], eax
+	mov		dword [esp+0], eax
 	
 	mov		eax, ecx
 	sub		eax, esi
-	mov		dword [esp +4], eax
+	mov		dword [esp+4], eax
 	
 	mov		eax, dword [racketOffset]
 	add		eax, dword [racketWidth]
-	mov		dword [esp +8], eax
+	mov		dword [esp+8], eax
 	
 	mov		eax, ecx
 	add		eax, esi
@@ -241,15 +351,15 @@ _render:
 	mov		eax, dword [windowWidth]
 	sub		eax, dword [racketOffset]
 	sub		eax, dword [racketWidth]
-	mov		dword [esp +0], eax
+	mov		dword [esp+0], eax
 	
 	mov		eax, ecx
 	sub		eax, esi
-	mov		dword [esp +4], eax
+	mov		dword [esp+4], eax
 
 	mov		eax, dword [windowWidth]
 	sub		eax, dword [racketOffset]
-	mov		dword [esp +8], eax
+	mov		dword [esp+8], eax
 
 	mov		eax, ecx
 	add		eax, esi
@@ -260,6 +370,33 @@ _render:
 	push	ecx					 ; &rect
 	push	ebx					 ; hdc
 	call	[FillRect]
+
+	; ball
+	mov		eax, dword [ballSize]
+	shr 	eax, 1
+
+	mov		ecx, dword [ballPosX]
+	sub		ecx, eax
+	mov		dword [esp+0], ecx
+
+	mov		edx, dword [ballPosY]
+	sub		edx, eax
+	mov		dword [esp+4], edx
+
+	mov		eax, dword [ballSize]
+	
+	add		ecx, eax
+	mov		dword [esp+8], ecx
+
+	add		edx, eax
+	mov		dword [esp+12], edx
+	
+	lea		ecx, [esp]
+	push 	dword [whiteBrush]	 ; HBRUSH
+	push	ecx					 ; &rect
+	push	ebx					 ; hdc
+	call	[FillRect]
+
 
 	; ReleaseDC(hwnd, hdc) [hwnd is already on the stack]
 	push	ebx
