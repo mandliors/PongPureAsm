@@ -249,6 +249,7 @@ _update_racket1BottomGood:
 	mov		dword [racket2Pos], eax
 
 	mov		ecx, dword [racketHeight]
+	shr		ecx, 1
 	cmp		dword [racket2Pos], ecx
 	jge		_update_racket2TopGood
 	mov		dword [racket2Pos], ecx
