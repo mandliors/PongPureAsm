@@ -21,7 +21,8 @@ WS_SYSMENU			equ 0x00080000
 WS_MINIMIZEBOX      equ 0x00020000
 WS_MAXIMIZEBOX      equ 0x00010000
 WS_SIZEBOX          equ 0x00040000
-WS_DEFAULT          equ WS_SYSMENU | WS_MINIMIZEBOX
+WS_CAPTION			equ 0x00C00000
+WS_DEFAULT          equ WS_SYSMENU | WS_MINIMIZEBOX | WS_CAPTION
 
 STD_OUTPUT_HANDLE	equ -11
 
@@ -47,6 +48,7 @@ section .text use32
     dll_import    user32.dll,   RegisterClassExA
     dll_import    user32.dll,   MessageBoxA
     dll_import    user32.dll,   CreateWindowExA
+    dll_import    user32.dll,   AdjustWindowRectEx
 
     dll_import    kernel32.dll, ExitProcess
     dll_import    kernel32.dll, GetModuleHandleA
@@ -142,12 +144,36 @@ create_window:
     push    ebp
     mov     ebp, esp
 
+	; calculate the actual size (so the client area size, not the whole window size)
+	sub		esp, 4*4			; alloc space for rect
+	mov		dword [esp+0], 0
+	mov		dword [esp+4], 0
+	mov		ecx, dword [ebp+12]
+	mov		dword [esp+8], ecx	; width
+	mov		ecx, dword [ebp+16]
+	mov		dword [esp+12], ecx	; height
+	mov		ecx, esp
+
+	push	0
+	push	0
+	push	WS_DEFAULT
+	push	ecx
+	call	[AdjustWindowRectEx]
+
+	; ecx := clientWidth, edx := clientHeight
+	mov		ecx, dword [esp+8]	; rect.right
+	sub		ecx, dword [esp+0]	; rect.left
+	mov		edx, dword [esp+12] ; rect.bottom
+	sub		edx, dword [esp+4]	; rect.top
+	add		esp, 4*4
+	
+	; now create the window
 	push	0					; LPVOID lpParam
 	push	0					; HINSTANCE hInstance
 	push	0					; HMENU hMenu
 	push	0					; HWND hWndParent
-	push	dword [ebp+16]		; int nHeight
-	push	dword [ebp+12]		; int nWidth
+	push	edx		; int nHeight
+	push	ecx		; int nWidth
 	push	69					; int y
 	push	420					; int x
 	push	WS_DEFAULT			; DWORD dwStyle
