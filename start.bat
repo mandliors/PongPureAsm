@@ -5,7 +5,7 @@ main.exe
 
 @echo off
 del *.obj
-del main.exe
+@REM del main.exe
 
 @REM normally, you would use the commands below, but since there is a bug in nasm, we have to trick it
 @REM by using the -fobj flag instead of -fwin32, and need a less restrictive linker than gcc (alink)
