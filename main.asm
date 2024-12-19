@@ -28,11 +28,15 @@ section .data use32
 	upArrowDown				dd 0
 	downArrowDown			dd 0
 
+	player1Score			dd 0
+	player2Score			dd 0
+
 
 ; read-only data
 section .rodata use32
 	windowWidth				dd 800
 	windowHeight			dd 600
+	borderWidth				dd 6
 
 	windowClassName         db "door", 0
 	windowName				db "nigus bigus", 0
@@ -43,9 +47,15 @@ section .rodata use32
 	racketSpeed				dd 4
 
 	ballSize				equ racketWidth
+	
+	ballSpeedMultiplier		dd 1.04
+	speedBonusOnCollision	dd 4.0
 
 	sigma 					db "the negus ruled Ethiopia until the coup of 1974", 10, 0
 	sigma_length 			equ $-sigma
+
+	minusOne				dd -1.0
+	two						dd 2.0
 	
 ; uninitialized static variables
 section .bss use32
@@ -120,10 +130,7 @@ section .text use32
 	add		esp, 20
 
 	; welcome text
-	push	sigma_length			; message length
-	push 	sigma					; message
-	call	print_to_stdout
-	add		esp, 8
+	call	debug
 
 	call	gameInit
 
@@ -179,8 +186,14 @@ gameInit:
 	; ball
 	mov		dword [ballPosX], ecx
 	mov		dword [ballPosY], edx
-	mov		dword [ballVelX], -3
-	mov		dword [ballVelY], 5
+
+	push	3
+	push	0
+	fild	dword [esp]
+	fild	dword [esp+4]	
+	fstp	dword [ballVelX]
+	fstp	dword [ballVelY]
+	add		esp, 8
 
 	mov		esp, ebp
 	pop 	ebp
@@ -269,13 +282,21 @@ _update_racket2BottomGood:
 	mov		eax, dword [ballSize]
 	shr		eax, 1
 
+	sub		esp, 8
+	fld		dword [ballVelX]
+	fistp	dword [esp]
+	fld		dword [ballVelY]
+	fistp	dword [esp+4]
+
 	mov		ecx, dword [ballPosX]
-	add		ecx, dword [ballVelX]
+	add		ecx, dword [esp]
 	mov		dword [ballPosX], ecx
 	
 	mov		edx, dword [ballPosY]
-	add		edx, dword [ballVelY]
+	add		edx, dword [esp+4]
 	mov		dword [ballPosY], edx
+
+	add		esp, 8
 
 	; check gameOver
 	call	checkGameOver
@@ -290,18 +311,21 @@ _update_racket2BottomGood:
 	sub		edx, eax
 	mov		eax, dword [ballSize]
 
-	cmp 	edx, 0
+	cmp 	edx, dword [borderWidth]
 	jle		_update_flipBallYVel
 
 	add		edx, dword [ballSize]
-	cmp		edx, dword [windowHeight]
+	mov		eax, dword [windowHeight]
+	sub		eax, dword [borderWidth]
+	cmp		edx, eax
 	jl		_update_noFlipBallYVel
 
 _update_flipBallYVel:
-	mov		eax, dword [ballVelY]
-	imul	eax, -1
-	mov		dword [ballVelY], eax
-	
+	fld		dword [ballVelY]
+	fld		dword [minusOne]
+	fmul
+	fstp	dword [ballVelY]
+
 	; check left side bounce
 _update_noFlipBallYVel:
 	mov		eax, dword [racketOffset]
@@ -331,7 +355,7 @@ _update_noFlipBallYVel:
 	cmp		eax, edx
 	jle 	_update_noLeftBounce
 
-	; now bounce left
+	; now bounce on the left
 	mov		eax, dword [racketOffset]
 	add		eax, dword [racketWidth]
 	mov		edx, dword [ballSize]
@@ -339,9 +363,42 @@ _update_noFlipBallYVel:
 	add		eax, edx
 	mov		dword [ballPosX], eax
 
-	mov		eax, dword [ballVelX]
-	imul 	eax, -1
-	mov		dword [ballVelX], eax
+	; calculate new ballVelY:
+	mov		ecx, dword [racketHeight]
+	shr		ecx, 1
+	mov		eax, dword [racket1Pos]
+	mov		edx, dword [racket1Pos]
+	sub		eax, ecx					; racket top
+	add		edx, ecx					; racket bottom
+	mov		ecx, dword [ballPosY]		; ballY
+										; [eax]×××××[ecx]-------[edx]
+	sub		edx, eax					; edx = ×××××-------
+	sub		ecx, eax					; ecx = ×××××
+
+	; ballVelY += (ecx/edx * 2 - 1) * speedBonusOnCollision
+	sub		esp, 8						; for ecx and edx
+	mov		dword [esp], ecx
+	mov		dword [esp+4], edx
+	fild	dword [esp]
+	fild	dword [esp+4]
+	fdiv
+	fld		dword [two]
+	fmul
+	fld		dword [minusOne]
+	fadd
+	fld		dword [speedBonusOnCollision]
+	fmul	
+	fld		dword [ballVelY]
+	fadd
+	fstp	dword [ballVelY]	
+	add		esp, 8
+
+	fld		dword [ballVelX]
+	fld		dword [minusOne]
+	fmul
+	fld		dword [ballSpeedMultiplier]
+	fmul
+	fstp	dword [ballVelX]
 
 	; check right side bounce
 _update_noLeftBounce:
@@ -378,7 +435,7 @@ _update_noLeftBounce:
 	cmp		eax, edx
 	jle 	_update_noRightBounce
 
-	; now bounce right
+	; now bounce on the right
 	mov		eax, dword [windowWidth]
 	sub		eax, dword [racketOffset]
 	sub		eax, dword [racketWidth]
@@ -387,10 +444,43 @@ _update_noLeftBounce:
 	sub		eax, edx
 	dec		eax
 	mov		dword [ballPosX], eax
+	
+	; calculate new ballVelY:
+	mov		ecx, dword [racketHeight]
+	shr		ecx, 1
+	mov		eax, dword [racket2Pos]
+	mov		edx, dword [racket2Pos]
+	sub		eax, ecx					; racket top
+	add		edx, ecx					; racket bottom
+	mov		ecx, dword [ballPosY]		; ballY
+										; [eax]×××××[ecx]-------[edx]
+	sub		edx, eax					; edx = ×××××-------
+	sub		ecx, eax					; ecx = ×××××
 
-	mov		eax, dword [ballVelX]
-	imul 	eax, -1
-	mov		dword [ballVelX], eax
+	; ballVelY += (ecx/edx * 2 - 1) * speedBonusOnCollision
+	sub		esp, 8						; for ecx and edx
+	mov		dword [esp], ecx
+	mov		dword [esp+4], edx
+	fild	dword [esp]
+	fild	dword [esp+4]
+	fdiv
+	fld		dword [two]
+	fmul
+	fld		dword [minusOne]
+	fadd
+	fld		dword [speedBonusOnCollision]
+	fmul	
+	fld		dword [ballVelY]
+	fadd
+	fstp	dword [ballVelY]	
+	add		esp, 8
+
+	fld		dword [ballVelX]
+	fld		dword [minusOne]
+	fmul
+	fld		dword [ballSpeedMultiplier]
+	fmul
+	fstp	dword [ballVelX]
 
 _update_noRightBounce:
 
@@ -412,14 +502,112 @@ _update_noRightBounce:
 	push	ecx					 ; &rect
 	push	ebx					 ; hdc
 	call	[FillRect]
+	
+	; top border
+	mov		eax, dword [borderWidth]
+	mov		ecx, dword [windowWidth]
+	mov		edx, dword [windowHeight]
+
+	mov		dword [esp+0], 0
+	mov		dword [esp+4], 0
+	mov		dword [esp+8], ecx
+	mov		dword [esp+12], eax
+
+	lea		ecx, [esp]
+	push 	dword [whiteBrush]	 ; HBRUSH
+	push	ecx					 ; &rect
+	push	ebx					 ; hdc
+	call	[FillRect]
+
+	; bottom border
+	mov		ecx, dword [windowWidth]
+	mov		edx, dword [windowHeight]
+	mov		eax, edx
+	sub		eax, dword [borderWidth]
+
+	mov		dword [esp+0], 0
+	mov		dword [esp+4], eax
+	mov		dword [esp+8], ecx
+	mov		dword [esp+12], edx
+
+	lea		ecx, [esp]
+	push 	dword [whiteBrush]	 ; HBRUSH
+	push	ecx					 ; &rect
+	push	ebx					 ; hdc
+	call	[FillRect]
+
+	; left border
+	mov		eax, dword [borderWidth]
+	mov		ecx, dword [windowWidth]
+	mov		edx, dword [windowHeight]
+
+	mov		dword [esp+0], 0
+	mov		dword [esp+4], 0
+	mov		dword [esp+8], eax
+	mov		dword [esp+12], edx
+
+	lea		ecx, [esp]
+	push 	dword [whiteBrush]	 ; HBRUSH
+	push	ecx					 ; &rect
+	push	ebx					 ; hdc
+	call	[FillRect]
+
+	; right border
+	mov		ecx, dword [windowWidth]
+	mov		edx, dword [windowHeight]
+	mov		eax, ecx
+	sub		eax, dword [borderWidth]
+
+	mov		dword [esp+0], eax
+	mov		dword [esp+4], 0
+	mov		dword [esp+8], ecx
+	mov		dword [esp+12], edx
+
+	lea		ecx, [esp]
+	push 	dword [whiteBrush]	 ; HBRUSH
+	push	ecx					 ; &rect
+	push	ebx					 ; hdc
+	call	[FillRect]
+
+	; draw center dots
+	mov		ecx, dword [windowWidth]
+	shr		ecx, 1
+	mov		eax, dword [racketWidth]
+	shr		eax, 1
+	sub		ecx, eax					; start x coord
+	mov		edx, 0						; start y coord
+	mov		eax, dword [racketWidth]	; increment
+_gameLoop_centerDotsLoopStart:
+	mov		dword [esp+0], ecx
+	mov		dword [esp+4], edx
+	add		ecx, eax
+	add		edx, eax
+	mov		dword [esp+8], ecx
+	mov		dword [esp+12], edx
+	sub		ecx, eax
+
+	push	eax
+	push	ecx
+	push	edx
+
+	lea		ecx, [esp+3*4]
+	push 	dword [whiteBrush]	 ; HBRUSH
+	push	ecx					 ; &rect
+	push	ebx					 ; hdc
+	call	[FillRect]
+
+	pop		edx
+	pop		ecx
+	pop		eax
+
+	add		edx, eax
+	add		edx, eax
+	cmp		edx, dword [windowHeight]
+	jle	_gameLoop_centerDotsLoopStart
 
 	; racket offset
 	mov		esi, dword [racketHeight]
 	shr		esi, 1						; divide by 2
-	; mov		eax, dword [racketHeight]
-	; mov		edx, 2
-	; div 	dl							; ax := al / dl
-	; movzx	esi, ax						; offset in esi
 
 	; player 1
 	mov		ecx, dword [racket1Pos]
@@ -520,20 +708,28 @@ checkGameOver:
 	mov		ecx, dword [ballSize]
 	shr		ecx, 1
 	sub		eax, ecx
-	cmp		eax, 0
+	cmp		eax, dword [borderWidth]
 	jge 	_checkGameOver_noLeftGameOver
 	call	gameInit					; reset
-	mov		eax, 2 						; player 2 wins
+	mov		eax, 2 						; player 2 scroes
+	mov		ecx, dword [player2Score]
+	inc		ecx
+	mov		dword [player2Score], ecx
 	jmp		_checkGameOver_return
 
 _checkGameOver_noLeftGameOver:
 
 	; right collision
 	add		eax, dword [ballSize]
-	cmp		eax, dword [windowWidth]
+	mov		ecx, dword [windowWidth]
+	sub		ecx, dword [borderWidth]
+	cmp		eax, ecx
 	jle		_checkGameOver_noRightGameOver
 	call	gameInit					; reset
-	mov		eax, 1						; player 1 wins
+	mov		eax, 1						; player 1 scroes
+	mov		ecx, dword [player1Score]
+	inc		ecx
+	mov		dword [player1Score], ecx
 	jge		_checkGameOver_return
 
 _checkGameOver_noRightGameOver:
@@ -646,6 +842,11 @@ _onKeyDown_NotUpArrow:
 	jne		_onKeyDown_NotDownArrow
 	mov		byte [downArrowDown], 1
 _onKeyDown_NotDownArrow:
+	cmp		dword [ebp_wparam], 0x1B	; Escape
+	jne		_onKeyDown_NotEscape
+	push	0
+	call	[PostQuitMessage]
+_onKeyDown_NotEscape:
 	mov		esp, ebp
 	pop		ebp
 	ret		16
