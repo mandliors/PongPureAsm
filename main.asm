@@ -31,12 +31,16 @@ section .data use32
 	player1Score			dd 0
 	player2Score			dd 0
 
+	scoreStringBuffer		dw '6', '9', 0
+
 
 ; read-only data
 section .rodata use32
 	windowWidth				dd 800
 	windowHeight			dd 600
 	borderWidth				dd 6
+
+	defaultFontName			db "Arial", 0
 
 	windowClassName         db "door", 0
 	windowName				db "nigus bigus", 0
@@ -64,6 +68,8 @@ section .bss use32
 
 	blackBrush				resb 4
 	whiteBrush				resb 4
+
+	defaultFont				resb 4
 
 	racket1Pos				resb 4
 	racket2Pos				resb 4
@@ -94,10 +100,13 @@ section .text use32
     dll_import    user32.dll,	EndPaint
     dll_import    user32.dll,	GetClientRect
     dll_import    user32.dll,	FillRect
+    dll_import    user32.dll,	DrawTextW
 	
     dll_import    user32.dll,	GetKeyState
     
 	dll_import    gdi32.dll,	CreateSolidBrush
+	dll_import    gdi32.dll,	SetTextColor
+	dll_import    gdi32.dll,	SetBkColor
 	dll_import    gdi32.dll,	DeleteObject
 
     dll_import    kernel32.dll, Sleep
@@ -605,6 +614,85 @@ _gameLoop_centerDotsLoopStart:
 	cmp		edx, dword [windowHeight]
 	jle	_gameLoop_centerDotsLoopStart
 
+	; set text colors
+	push	0x00000000
+	push	ebx
+	call	[SetBkColor]
+
+	push	0x00FFFFFF
+	push	ebx
+	call	[SetTextColor]
+
+	; draw player 1 score
+	mov		ecx, dword [windowWidth]
+	shr		ecx, 2
+	mov		dword [esp+0], ecx
+	mov		dword [esp+4], 100
+	add		ecx, 100
+	mov		dword [esp+8], ecx
+	mov		dword [esp+12], 150
+	
+	; set the score buffer
+	mov		eax, dword [player1Score]
+    mov		ecx, 10
+	mov		edx, 0
+    div		ecx
+
+	add		eax, 48
+	mov		word [scoreStringBuffer], ax
+	cmp		eax, 48
+	jne		_gameLoop_player1ScoreGreaterThan10
+	mov		word [scoreStringBuffer], 32
+_gameLoop_player1ScoreGreaterThan10:
+	add		edx, 48
+	mov		word [scoreStringBuffer+2], dx
+
+	; draw the score text
+	lea		ecx, [esp]
+	push	0
+	push	ecx
+	push	-1
+	lea		ecx, dword [scoreStringBuffer]
+	push	ecx
+	push	ebx
+	call	[DrawTextW]
+
+	; draw player 2 score
+	mov		ecx, dword [windowWidth]
+	shr		ecx, 2
+	imul	ecx, 3
+	mov		dword [esp+0], ecx
+	mov		dword [esp+4], 100
+	add		ecx, 100
+	mov		dword [esp+8], ecx
+	mov		dword [esp+12], 150
+	lea		ecx, [esp]
+	
+	; set the score buffer
+	mov		eax, dword [player2Score]
+    mov		ecx, 10
+	mov		edx, 0
+    div		ecx
+
+	add		eax, 48
+	mov		word [scoreStringBuffer], ax
+	cmp		eax, 48
+	jne		_gameLoop_player2ScoreGreaterThan10
+	mov		word [scoreStringBuffer], 32
+_gameLoop_player2ScoreGreaterThan10:
+	add		edx, 48
+	mov		word [scoreStringBuffer+2], dx
+
+	; draw the score text
+	lea		ecx, [esp]
+	push	0
+	push	ecx
+	push	-1
+	lea		ecx, dword [scoreStringBuffer]
+	push	ecx
+	push	ebx
+	call	[DrawTextW]
+
 	; racket offset
 	mov		esi, dword [racketHeight]
 	shr		esi, 1						; divide by 2
@@ -678,13 +766,14 @@ _gameLoop_centerDotsLoopStart:
 
 	add		edx, eax
 	mov		dword [esp+12], edx
-	
 	lea		ecx, [esp]
+	
 	push 	dword [whiteBrush]	 ; HBRUSH
 	push	ecx					 ; &rect
 	push	ebx					 ; hdc
 	call	[FillRect]
 
+	add		esp, 16
 
 	; ReleaseDC(hwnd, hdc) [hwnd is already on the stack]
 	push	ebx
@@ -787,6 +876,7 @@ _onCreate:
 	call	[CreateSolidBrush]
 	mov		dword [whiteBrush], eax
 
+	; show and update the window
 	push	SW_SHOW
 	push	dword [ebp_hwnd]
 	call	[ShowWindow]
@@ -874,12 +964,15 @@ _onKeyUp_NotDownArrow:
 
 _onClose:
 	; delete brushes
-	push	dword [blackBrush]
+	lea		ecx, [blackBrush]
+	push	ecx
 	call 	[DeleteObject]
 
-	push	dword [whiteBrush]
+	lea		ecx, [whiteBrush]
+	push	ecx
 	call 	[DeleteObject]
 
+	; destroy the window
 	push	dword [ebp_hwnd]
 	call	[DestroyWindow]
 
