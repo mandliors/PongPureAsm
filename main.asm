@@ -43,7 +43,7 @@ section .rodata use32
 	defaultFontName			db "Arial", 0
 
 	windowClassName         db "door", 0
-	windowName				db "nigus bigus", 0
+	windowName				db "Pong", 0
 	
 	racketWidth				dd 10
 	racketHeight			dd 60
@@ -55,7 +55,7 @@ section .rodata use32
 	ballSpeedMultiplier		dd 1.04
 	speedBonusOnCollision	dd 4.0
 
-	sigma 					db "the negus ruled Ethiopia until the coup of 1974", 10, 0
+	sigma 					db "debug", 10, 0
 	sigma_length 			equ $-sigma
 
 	minusOne				dd -1.0
@@ -139,7 +139,7 @@ section .text use32
 	add		esp, 20
 
 	; welcome text
-	call	debug
+	;call	debug
 
 	call	gameInit
 
